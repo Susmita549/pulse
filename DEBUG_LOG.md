@@ -152,6 +152,32 @@ PULSE-106 also had two things behind the empty dashboard. D8 is the timezone bug
 
 **Blast radius:** Only `listFeedback`. `src/lib/cache.ts` is now unused; I left the file. `%` in a search string is still an ILIKE wildcard, same as before.
 
+## Looks wrong but I left it alone
+
+- **Webhook still returns 2xx** for unknown brand / customer / wave. `docs/decisions.md` is explicit: a bad slug is not transient, and 4xx/5xx makes the provider retry a dead payload for hours. `received: N` means we accepted N events, not that we stored N rows.
+- **Buckets are derived at read time**, not stored. Documented. Boundaries have moved before.
+- **Score-only rows stay out of the comments table.** That is the table's job. D1 made the headline match that set on purpose.
+- **`db push` instead of migrations.** Documented for a disposable database.
+
+## Suspected, not fixed
+
+### S1: Bucket highlight can lie after back/forward
+
+`BucketFilter` and `SearchBox` keep `useState(current)` and never sync when `current` changes from the URL. After D4 the click path writes the right query param, so the table is correct. Browser back/forward still updates the URL (and the table) without resetting that local state, so the dark button or the search box can disagree with what you are looking at.
+
+I could not drive back/forward with `curl`. I did not want to “fix” it in D4 because that is not the one-click lag in the ticket. I think it is real. I have not watched it in a browser.
+
+### S2: `?page=999` looks like “no comments”
+
+I did reproduce this. Flash Feb has 179 comments, 12 pages. `?page=999` still 200s. The table says “No comments match these filters.” The footer says `14971–179 of 179` and `Page 999 of 12`. Previous is enabled, Next is disabled. The score card is still −49 from 179, so it is not an empty wave.
+
+`skip`/`take` just walk off the end of the result set. Pagination never clamps `page`. I left it — it is ugly, not the “no feedback yet” ticket, and the Next button already stops you getting here from the UI. A pasted URL is the only way I hit it.
+
+### S3: Dead `loadWaveFeedback` swallows every error
+
+It still `catch`es and returns `[]`. If anything called it during a database outage, you would get the empty-wave UI. Nothing calls it after D1, so I could not reproduce it on a live page. If it is ever wired back up, that `catch` should go.
+
+
 
 
 
