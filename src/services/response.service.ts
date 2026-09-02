@@ -10,6 +10,7 @@ export type FeedbackRow = {
   verbatim: string | null;
   respondedAt: Date;
   customerName: string;
+  flagged: boolean;
 };
 
 export type FeedbackPage = {
@@ -26,6 +27,7 @@ export type ListFeedbackParams = {
   page: number;
   pageSize: number;
   sort: SortKey;
+  flaggedOnly: boolean;
 };
 
 export type IncomingResponse = {
@@ -50,6 +52,24 @@ function scoreFilter(bucket: Bucket) {
   }
 }
 
+function toFeedbackRow(row: {
+  id: string;
+  score: number;
+  verbatim: string | null;
+  respondedAt: Date;
+  customer: { name: string };
+  flagged?: boolean;
+}): FeedbackRow {
+  return {
+    id: row.id,
+    score: row.score,
+    verbatim: row.verbatim,
+    respondedAt: row.respondedAt,
+    customerName: row.customer.name,
+    flagged: row.flagged === true,
+  };
+}
+
 export class ResponseService {
   /**
    * Every response in the wave that carries a written comment.
@@ -68,13 +88,7 @@ export class ResponseService {
         orderBy: { respondedAt: "desc" },
       });
 
-      return rows.map((row) => ({
-        id: row.id,
-        score: row.score,
-        verbatim: row.verbatim,
-        respondedAt: row.respondedAt,
-        customerName: row.customer.name,
-      }));
+      return rows.map(toFeedbackRow);
     } catch (error) {
       return [];
     }
@@ -98,7 +112,7 @@ export class ResponseService {
   }
 
   static async listFeedback(params: ListFeedbackParams): Promise<FeedbackPage> {
-    const { wave, bucket, search, page, pageSize, sort } = params;
+    const { wave, bucket, search, page, pageSize, sort, flaggedOnly } = params;
     const offset = (page - 1) * pageSize;
     const trimmedSearch = search.trim();
 
@@ -109,6 +123,7 @@ export class ResponseService {
           ? { contains: trimmedSearch, mode: "insensitive" as const }
           : { not: null },
       score: scoreFilter(bucket),
+      flagged: flaggedOnly ? true : undefined,
     };
 
     const [rows, total] = await Promise.all([
@@ -126,15 +141,25 @@ export class ResponseService {
     ]);
 
     return {
-      rows: rows.map((row) => ({
-        id: row.id,
-        score: row.score,
-        verbatim: row.verbatim,
-        respondedAt: row.respondedAt,
-        customerName: row.customer.name,
-      })),
+      rows: rows.map(toFeedbackRow),
       total,
     };
+  }
+
+  static async setFlagged(id: string, flagged: boolean): Promise<{ id: string; flagged: boolean } | null> {
+    try {
+      const row = await prisma.response.update({
+        where: { id },
+        data: { flagged } as Prisma.ResponseUncheckedUpdateInput,
+        select: { id: true },
+      });
+      return { id: row.id, flagged };
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
+        return null;
+      }
+      throw error;
+    }
   }
 
   /**

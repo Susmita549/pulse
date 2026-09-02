@@ -6,6 +6,7 @@ import { FeedbackTable } from "@/components/FeedbackTable";
 import { Pagination } from "@/components/Pagination";
 import { ScoreCard } from "@/components/ScoreCard";
 import { SearchBox } from "@/components/SearchBox";
+import { FlaggedFilter } from "@/components/FlaggedFilter";
 import { WaveSelect } from "@/components/WaveSelect";
 import { formatDate } from "@/lib/format";
 import { isBucket } from "@/lib/nps";
@@ -55,6 +56,7 @@ export default async function BrandDetailPage({
   const search = readParam(query, "q") ?? "";
   const sort: SortKey = readParam(query, "sort") === "date" ? "date" : "score";
   const page = Math.max(1, Number.parseInt(readParam(query, "page") ?? "1", 10) || 1);
+  const flaggedOnly = readParam(query, "flagged") === "1";
 
   const summary = await ResponseService.getSummary(wave);
   const { rows, total } = await ResponseService.listFeedback({
@@ -64,9 +66,11 @@ export default async function BrandDetailPage({
     page,
     pageSize: PAGE_SIZE,
     sort,
+    flaggedOnly,
   });
 
   const linkQuery: Record<string, string> = { wave: wave.id, bucket, q: search };
+  if (flaggedOnly) linkQuery.flagged = "1";
 
   return (
     <div className="space-y-6">
@@ -92,12 +96,15 @@ export default async function BrandDetailPage({
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <BucketFilter current={bucket} />
+        <div className="flex flex-wrap items-center gap-2">
+          <BucketFilter current={bucket} />
+          <FlaggedFilter current={flaggedOnly} />
+        </div>
         <SearchBox current={search} />
       </div>
 
       <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
-        <FeedbackTable rows={rows} sort={sort} query={linkQuery} />
+        <FeedbackTable rows={rows} sort={sort} query={linkQuery} brandSlug={brand.slug} />
         <Pagination page={page} pageSize={PAGE_SIZE} total={total} />
       </div>
     </div>

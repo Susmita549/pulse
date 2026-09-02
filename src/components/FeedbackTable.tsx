@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { FlagButton } from "@/components/FlagButton";
 import { formatDateTime, cx } from "@/lib/format";
 import { bucketForScore } from "@/lib/nps";
 import type { FeedbackRow, SortKey } from "@/services/response.service";
@@ -40,10 +41,12 @@ export function FeedbackTable({
   rows,
   sort,
   query,
+  brandSlug,
 }: {
   rows: FeedbackRow[];
   sort: SortKey;
   query: Record<string, string>;
+  brandSlug: string;
 }) {
   if (rows.length === 0) {
     return (
@@ -65,6 +68,7 @@ export function FeedbackTable({
           <th className="px-4 py-3 font-medium">
             <SortLink label="Received" sortKey="date" currentSort={sort} query={query} />
           </th>
+          <th className="px-4 py-3 font-medium">Follow-up</th>
         </tr>
       </thead>
       <tbody>
@@ -87,6 +91,9 @@ export function FeedbackTable({
               <td className="px-4 py-3 text-slate-700">{row.verbatim}</td>
               <td className="px-4 py-3 whitespace-nowrap text-slate-500">
                 {formatDateTime(row.respondedAt)}
+              </td>
+              <td className="px-4 py-3">
+                <FlagButton id={row.id} flagged={row.flagged} brandSlug={brandSlug} />
               </td>
             </tr>
           );

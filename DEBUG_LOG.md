@@ -177,6 +177,27 @@ I did reproduce this. Flash Feb has 179 comments, 12 pages. `?page=999` still 20
 
 It still `catch`es and returns `[]`. If anything called it during a database outage, you would get the empty-wave UI. Nothing calls it after D1, so I could not reproduce it on a live page. If it is ever wired back up, that `catch` should go.
 
+## Stage 2: flag for follow-up
+
+A boolean `flagged` column on `Response`, default false. Stored, not derived, so it survives refresh and is shared for anyone looking at the brand.
+
+**Calls I made**
+
+- Flag lives on the response row, not a separate table. One reviewer, one follow-up bit; no assignment, no note, no timestamp.
+- Only comments can be flagged in the UI, because only comments appear in the table. Score-only rows can still be flagged in the database if we ever list them.
+- “Flagged only” is a URL filter (`?flagged=1`), same pattern as bucket / search / page. It stacks with those. Toggling it resets to page 1. Wave and sort keep the flag filter because they copy the current query string.
+- The score card ignores the flag filter, same as it ignores the bucket. The headline is still “this wave”, not “this view”.
+- Toggle goes page → server action → `ResponseService.setFlagged` → Prisma. I did not copy `addCustomer`, which talks to Prisma from the action. README says services own Prisma.
+- Failures: unknown id returns `NOT_FOUND`; anything else logs and returns a generic error next to the button. The row does not flip until the server says so (`revalidatePath`).
+- Empty flagged view reuses “No comments match these filters.”
+- I did not put Prisma in the server action (unlike `addCustomer`). README already says services own the database. I added `src/actions/responses.ts` next to `customers.ts` instead of stuffing the flag into the customer action.
+- `FlaggedFilter` reads the live query string, same as search and pagination. I did not copy `BucketFilter`’s local `useState`, which can drift from the URL on back/forward (S1).
+- I did not clamp pagination when `flagged=1` leaves you on a page past the end. That is the same hole as S2.
+- I did not scope `setFlagged` to the brand. There is no auth on this app; the action already takes a slug only for `revalidatePath`.
+
+**How I verified it:** After restarting the dev server so Prisma Client knew the new column, `?flagged=1` 200s. With 18 comments flagged on Flash Feb, page 1 showed 15 Flagged buttons, page 2 showed the other 3, and they did not overlap. Flagged + Detractors showed the two detractor comments I had marked. A second fetch of the same URL still had them (the column is in Postgres). Unknown ids return null from the service. I cleared the test flags afterwards so the seed is back to unflagged.
+
+
 
 
 

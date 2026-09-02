@@ -54,6 +54,7 @@ model Response {
   verbatim    String?
   /// Provider-supplied de-duplication key. Null for responses captured in-app.
   eventId     String?  @unique
+  flagged     Boolean  @default(false)
   respondedAt DateTime @default(now())
   createdAt   DateTime @default(now())
 
@@ -61,4 +62,5 @@ model Response {
   customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
 
   @@index([customerId])
+  @@index([waveId, flagged])
 }
