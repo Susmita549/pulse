@@ -135,7 +135,7 @@ export class ResponseService {
         FROM "Response" r
         JOIN "Customer" c ON c.id = r."customerId"
         ${where}
-        ORDER BY ${sort === "score" ? 'r.score DESC' : 'r."respondedAt" DESC'}
+        ORDER BY ${sort === "score" ? "r.score DESC" : 'r."respondedAt" DESC'}, r.id ASC
         LIMIT ${pageSize} OFFSET ${offset}
       `);
 
@@ -162,7 +162,10 @@ export class ResponseService {
       prisma.response.findMany({
         where,
         include: { customer: { select: { name: true } } },
-        orderBy: sort === "score" ? { score: "desc" } : { respondedAt: "desc" },
+        orderBy:
+          sort === "score"
+            ? [{ score: "desc" }, { id: "asc" }]
+            : [{ respondedAt: "desc" }, { id: "asc" }],
         skip: offset,
         take: pageSize,
       }),

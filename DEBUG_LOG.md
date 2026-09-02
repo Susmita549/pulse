@@ -15,3 +15,17 @@ Ran the app locally (`npm run dev`, Postgres in Docker, seeded data). I used `ps
 **How I verified it:** I checked every wave in SQL (`verbatim IS NOT NULL`) against the card and the table. They now match: Flash Feb 179, Acme Q1 417, Q3 401, Q4 382, Northwind Q1 391, Q3 383, Q4 352. Before this they disagreed on every wave. The breakdown also lines up — Flash Feb is 30 / 32 / 117, and clicking Detractors shows 117 rows.
 
 **Blast radius:** `/brands` uses the same `getSummary`, so those headlines moved too and still match SQL. I looked for other places that load wave responses. `loadWaveFeedback` does, but nothing calls it any more.
+
+### D2: Page 2 could show a row from page 1 (PULSE-102)
+
+**Symptom:** Click Next on the comments table and you see someone you already saw on page 1.
+
+**How I found it:** Read `listFeedback`. Default sort is score, page size 15. Scores only go 0–10, so a busy wave has a pile of 10s. I then walked eight pages in a small script: with `ORDER BY score DESC` only, 10 of the Flash Feb comment rows showed up twice.
+
+**Root cause:** Pagination is `LIMIT` / `OFFSET`. If the sort key isn't unique, Postgres is free to shuffle tied rows between queries. The same id can land on page 1 this time and page 2 the next. Date sort has the same hole when two people reply in the same millisecond.
+
+**Fix:** Added `id` as a tie-breaker, so the order is always `score DESC, id ASC` or `respondedAt DESC, id ASC`. Did it on both query paths — the Prisma `findMany` and the raw SQL search — because they paginate the same table.
+
+**How I verified it:** Same eight-page walk after the change: 0 duplicates. On the live page, Flash Feb page 1 is fifteen 10s, page 2 is two 10s then 9s, and no customer names overlap.
+
+**Blast radius:** Only `listFeedback`. I checked `loadWaveFeedback` — it sorts by date with no `id` either, but nothing paginates that list, so I left it.
