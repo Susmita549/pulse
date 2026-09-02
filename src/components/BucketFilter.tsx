@@ -22,7 +22,7 @@ export function BucketFilter({ current }: { current: Bucket }) {
     setBucket(next);
 
     const params = new URLSearchParams(searchParams.toString());
-    params.set("bucket", bucket);
+    params.set("bucket", next);
     params.set("page", "1");
     router.push(`?${params.toString()}`);
   };

@@ -46,3 +46,20 @@ If you subtract the labels on the card (17% − 65% = −48) you won't get −49
 
 **Blast radius:** This is the only place we compute NPS. The score card and the brands list both use it. I grepped for other `parseInt` calls; the page number parser is on a whole number, so it's fine.
 
+### D4: Bucket filter wrote the previous click (PULSE-103)
+
+**Symptom:** Filter by detractors and it still shows everyone. Click it again and it works. Click something else and it's wrong again.
+
+**How I found it:** Read `BucketFilter.onSelect`. The ticket is exactly one click behind, which is what you get if you write React state into the URL right after `setState`.
+
+**Root cause:** The handler did `setBucket(next)` then `params.set("bucket", bucket)`. `setBucket` doesn't update `bucket` until the next render, so the URL got the old value. The button highlight used local state, so it looked updated while the table followed the stale query param. Second click sent what you meant on the first. I checked the server filter too — `?bucket=detractors` really does return 0–6s (117 comments on Flash Feb). The query was fine. The click wasn't sending the right URL.
+
+**Fix:** `params.set("bucket", next)` so the URL is the button you actually clicked.
+
+I left the extra `useState`. After back/forward the highlight can still disagree with the URL, but the table follows the URL, so that is not this ticket. `WaveSelect` already writes the event value. `SearchBox` writes the typed input on submit, so it isn't the same bug.
+
+**How I verified it:** With a correct URL, page 1 is all 10s / all 8s / all 6s for promoters / passives / detractors. The HEAD code wrote `bucket` (stale). After the change it writes `next`.
+
+**Blast radius:** Only `BucketFilter`. Looked at the other client controls that push query params. Score card ignoring the bucket is on purpose from D1 — the headline stays put while you filter the table.
+
+
