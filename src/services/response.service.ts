@@ -94,8 +94,18 @@ export class ResponseService {
     }
   }
 
+  /**
+   * Headline numbers for a wave, over the same responses the comments table
+   * shows: the ones carrying a written comment. Bucket and search filters are
+   * deliberately not applied, so the score card stays put while a reviewer
+   * filters the table underneath it.
+   */
   static async getSummary(wave: Wave): Promise<Summary> {
-    const rows = await this.loadWaveFeedback(wave);
+    const rows = await prisma.response.findMany({
+      where: { waveId: wave.id, verbatim: { not: null } },
+      select: { score: true },
+    });
+
     if (rows.length === 0) return EMPTY_SUMMARY;
 
     return summarise(rows.map((row) => row.score));
