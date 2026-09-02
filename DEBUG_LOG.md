@@ -62,4 +62,21 @@ I left the extra `useState`. After back/forward the highlight can still disagree
 
 **Blast radius:** Only `BucketFilter`. Looked at the other client controls that push query params. Score card ignoring the bucket is on purpose from D1 — the headline stays put while you filter the table.
 
+### D5: Brands page counted active customers one query at a time (PULSE-104)
+
+**Symptom:** `/brands` was the slowest page — over a second with two brands. Two hundred brands would make it unusable.
+
+**How I found it:** Read `BrandService.listWithStats`. The inner loop runs `prisma.response.count` once per customer. Seed puts 1,000 customers on each brand.
+
+**Root cause:** ~2,000 sequential COUNT round-trips, plus a waves query and a summary per brand. The customer loop is what blows up. At 200 brands it becomes hundreds of thousands of queries.
+
+**Fix:** Batch it. One waves query for all brand ids (pick latest in memory), `customer.groupBy` for totals, another `groupBy` with `responses: { some: {} }` for active customers, then `Promise.all` of `getSummary` for each latest wave. "Active" still means anyone who has ever responded.
+
+I left one `getSummary` per brand. That looks expensive but it's one query per brand, not one per customer, and the page needs each headline.
+
+**How I verified it:** Warm `/brands` is about 40–90 ms now. Acme shows 959 / 1000 and Northwind 933 / 1000, both matching SQL. NPS and response totals still match the comment-only summary from D1.
+
+**Blast radius:** Only `listWithStats`. The brand detail page does not use this method.
+
+
 

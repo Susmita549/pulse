@@ -26,41 +26,58 @@ export class BrandService {
    */
   static async listWithStats(): Promise<BrandWithStats[]> {
     const brands = await prisma.brand.findMany({ orderBy: { name: "asc" } });
-    const results: BrandWithStats[] = [];
+    if (brands.length === 0) return [];
 
-    for (const brand of brands) {
-      const waves = await prisma.wave.findMany({
-        where: { brandId: brand.id },
+    const brandIds = brands.map((brand) => brand.id);
+
+    const [waves, customerCounts, activeCounts] = await Promise.all([
+      prisma.wave.findMany({
+        where: { brandId: { in: brandIds } },
         orderBy: { startDate: "desc" },
-      });
+      }),
+      prisma.customer.groupBy({
+        by: ["brandId"],
+        where: { brandId: { in: brandIds } },
+        _count: { _all: true },
+      }),
+      prisma.customer.groupBy({
+        by: ["brandId"],
+        where: { brandId: { in: brandIds }, responses: { some: {} } },
+        _count: { _all: true },
+      }),
+    ]);
 
-      const latestWave = waves[0] ?? null;
-      const summary = latestWave ? await ResponseService.getSummary(latestWave) : EMPTY_SUMMARY;
-
-      const customers = await prisma.customer.findMany({
-        where: { brandId: brand.id },
-        select: { id: true },
-      });
-
-      // How many of this brand's customers have ever given us feedback.
-      let activeCustomers = 0;
-      for (const customer of customers) {
-        const responseCount = await prisma.response.count({
-          where: { customerId: customer.id },
-        });
-        if (responseCount > 0) activeCustomers++;
-      }
-
-      results.push({
-        ...brand,
-        waveCount: waves.length,
-        latestWave,
-        summary,
-        customerCount: customers.length,
-        activeCustomers,
-      });
+    const wavesByBrand = new Map<string, Wave[]>();
+    for (const wave of waves) {
+      const list = wavesByBrand.get(wave.brandId) ?? [];
+      list.push(wave);
+      wavesByBrand.set(wave.brandId, list);
     }
 
-    return results;
+    const customerCountByBrand = new Map(
+      customerCounts.map((row) => [row.brandId, row._count._all]),
+    );
+    const activeCountByBrand = new Map(
+      activeCounts.map((row) => [row.brandId, row._count._all]),
+    );
+
+    const latestWaves = brands.map((brand) => wavesByBrand.get(brand.id)?.[0] ?? null);
+    const summaries = await Promise.all(
+      latestWaves.map((wave) => (wave ? ResponseService.getSummary(wave) : Promise.resolve(EMPTY_SUMMARY))),
+    );
+
+    return brands.map((brand, index) => {
+      const brandWaves = wavesByBrand.get(brand.id) ?? [];
+      const latestWave = latestWaves[index];
+
+      return {
+        ...brand,
+        waveCount: brandWaves.length,
+        latestWave,
+        summary: summaries[index],
+        customerCount: customerCountByBrand.get(brand.id) ?? 0,
+        activeCustomers: activeCountByBrand.get(brand.id) ?? 0,
+      };
+    });
   }
 }
