@@ -1,6 +1,5 @@
 import { Prisma, type Wave } from "@prisma/client";
 
-import { getCached, setCached } from "@/lib/cache";
 import { EMPTY_SUMMARY, summarise, type Bucket, type Summary } from "@/lib/nps";
 import { prisma } from "@/lib/prisma";
 import { waveWindow } from "@/services/wave.service";
@@ -48,19 +47,6 @@ function scoreFilter(bucket: Bucket) {
       return { lte: 6 };
     default:
       return undefined;
-  }
-}
-
-function scoreSql(bucket: Bucket): string {
-  switch (bucket) {
-    case "promoters":
-      return "AND r.score >= 9";
-    case "passives":
-      return "AND r.score BETWEEN 7 AND 8";
-    case "detractors":
-      return "AND r.score <= 6";
-    default:
-      return "";
   }
 }
 
@@ -114,43 +100,14 @@ export class ResponseService {
   static async listFeedback(params: ListFeedbackParams): Promise<FeedbackPage> {
     const { wave, bucket, search, page, pageSize, sort } = params;
     const offset = (page - 1) * pageSize;
-
-    if (search.trim().length > 0) {
-      const cacheKey = `${wave.id}|${bucket}|${sort}|${page}|${search}`;
-      const cached = getCached<FeedbackPage>(cacheKey);
-      if (cached) return cached;
-
-      const where = `
-        WHERE r."waveId" = '${wave.id}'
-          AND r.verbatim IS NOT NULL
-          AND r.verbatim ILIKE '%${search}%'
-          ${scoreSql(bucket)}
-      `;
-
-      const rows = await prisma.$queryRawUnsafe<FeedbackRow[]>(`
-        SELECT r.id, r.score, r.verbatim, r."respondedAt", c.name AS "customerName"
-        FROM "Response" r
-        JOIN "Customer" c ON c.id = r."customerId"
-        ${where}
-        ORDER BY ${sort === "score" ? "r.score DESC" : 'r."respondedAt" DESC'}, r.id ASC
-        LIMIT ${pageSize} OFFSET ${offset}
-      `);
-
-      const counted = await prisma.$queryRawUnsafe<{ count: number }[]>(`
-        SELECT COUNT(*)::int AS count
-        FROM "Response" r
-        JOIN "Customer" c ON c.id = r."customerId"
-        ${where}
-      `);
-
-      const result: FeedbackPage = { rows, total: counted[0]?.count ?? 0 };
-      setCached(cacheKey, result);
-      return result;
-    }
+    const trimmedSearch = search.trim();
 
     const where = {
       waveId: wave.id,
-      verbatim: { not: null },
+      verbatim:
+        trimmedSearch.length > 0
+          ? { contains: trimmedSearch, mode: "insensitive" as const }
+          : { not: null },
       score: scoreFilter(bucket),
     };
 

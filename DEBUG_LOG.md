@@ -138,6 +138,21 @@ PULSE-106 also had two things behind the empty dashboard. D8 is the timezone bug
 
 **Blast radius:** Only the feedback list path. `loadWaveFeedback` still applies the (now UTC) window, but nothing calls it.
 
+### D10: Comment search built SQL by concatenating the query (no ticket)
+
+**Symptom:** Nobody filed this. Search comments with an apostrophe and the query can blow up or change meaning. Happy-path searches like “delivery” work, so it sat unnoticed.
+
+**How I found it:** Read the search branch of `listFeedback`. It used `$queryRawUnsafe` and dropped `search` straight into `ILIKE '%${search}%'`. I ran the old shape in psql: `ILIKE '%'%'` fails with `unterminated quoted string`.
+
+**Root cause:** Two query implementations. The search path built SQL by string concatenation instead of bound parameters. There was also a 60s in-process cache on that path with no invalidation when webhook rows landed. That is a weaker cousin of the same “search is a special case” split; it goes away when the raw path goes away.
+
+**Fix:** One Prisma `findMany` / `count` path. Non-empty search uses `verbatim: { contains: trimmed, mode: "insensitive" }` (Postgres `ILIKE`, parameterized). Removed the cache use from this path.
+
+**How I verified it:** `?q=delivery` returns 8 rows, matching SQL. `?q='` returns 200, not an error. `?q=%' OR '1'='1` shows “No comments match these filters” — treated as literal text, not SQL.
+
+**Blast radius:** Only `listFeedback`. `src/lib/cache.ts` is now unused; I left the file. `%` in a search string is still an ILIKE wildcard, same as before.
+
+
 
 
 
