@@ -29,3 +29,20 @@ Ran the app locally (`npm run dev`, Postgres in Docker, seeded data). I used `ps
 **How I verified it:** Same eight-page walk after the change: 0 duplicates. On the live page, Flash Feb page 1 is fifteen 10s, page 2 is two 10s then 9s, and no customer names overlap.
 
 **Blast radius:** Only `listFeedback`. I checked `loadWaveFeedback` — it sorts by date with no `id` either, but nothing paginates that list, so I left it.
+
+### D3: NPS was chopped, not rounded (PULSE-101)
+
+**Symptom:** After D1 the rows lined up, but the headline could still be one point off what you get on a calculator.
+
+**How I found it:** Read `summarise` in `src/lib/nps.ts`. Flash Feb still didn't match.
+
+**Root cause:** The code did `parseInt(String(promoterShare - detractorShare), 10)`. `parseInt` stops at the decimal, so it chops toward zero. −48.603 became −48. The subtraction itself was fine.
+
+**Fix:** `Math.round(...)` instead. That's how NPS is usually shown, and it's what the README describes. The 17% / 18% / 65% labels already used `Math.round`, so I left those.
+
+**How I verified it:** Flash Feb is 30 promoters and 117 detractors out of 179. That's 16.759% − 65.363% = −48.603, which rounds to −49. The old code showed −48. I also checked a positive wave (Acme Q4 → 51) and a more negative one (Northwind Q3 → −73).
+
+If you subtract the labels on the card (17% − 65% = −48) you won't get −49. That's not a bug. Those percentages are rounded on their own. NPS rounds the real difference once.
+
+**Blast radius:** This is the only place we compute NPS. The score card and the brands list both use it. I grepped for other `parseInt` calls; the page number parser is on a whole number, so it's fine.
+

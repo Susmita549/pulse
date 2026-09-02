@@ -57,7 +57,7 @@ export function summarise(scores: number[]): Summary {
   const detractorShare = (detractors / total) * 100;
 
   return {
-    nps: parseInt(String(promoterShare - detractorShare), 10),
+    nps: Math.round(promoterShare - detractorShare),
     promoters,
     passives,
     detractors,
