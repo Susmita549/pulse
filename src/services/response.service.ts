@@ -113,7 +113,6 @@ export class ResponseService {
 
   static async listFeedback(params: ListFeedbackParams): Promise<FeedbackPage> {
     const { wave, bucket, search, page, pageSize, sort } = params;
-    const { start, end } = waveWindow(wave);
     const offset = (page - 1) * pageSize;
 
     if (search.trim().length > 0) {
@@ -124,8 +123,6 @@ export class ResponseService {
       const where = `
         WHERE r."waveId" = '${wave.id}'
           AND r.verbatim IS NOT NULL
-          AND r."respondedAt" >= '${start.toISOString()}'
-          AND r."respondedAt" <= '${end.toISOString()}'
           AND r.verbatim ILIKE '%${search}%'
           ${scoreSql(bucket)}
       `;
@@ -154,7 +151,6 @@ export class ResponseService {
     const where = {
       waveId: wave.id,
       verbatim: { not: null },
-      respondedAt: { gte: start, lte: end },
       score: scoreFilter(bucket),
     };
 

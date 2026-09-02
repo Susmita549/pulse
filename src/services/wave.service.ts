@@ -10,10 +10,10 @@ export type WaveWindow = { start: Date; end: Date };
  */
 export function waveWindow(wave: Pick<Wave, "startDate" | "endDate">): WaveWindow {
   const start = new Date(wave.startDate);
-  start.setHours(0, 0, 0, 0);
+  start.setUTCHours(0, 0, 0, 0);
 
   const end = new Date(wave.endDate);
-  end.setHours(23, 59, 59, 999);
+  end.setUTCHours(23, 59, 59, 999);
 
   return { start, end };
 }

@@ -108,6 +108,37 @@ PULSE-105 looked like one ticket. It was two defects sitting behind it. D6 is wh
 
 **Blast radius:** Only webhook inserts. Seeded responses have null `eventId`. Dirty data with duplicate event ids would block `db push`; `db:reset` clears that.
 
+PULSE-106 also had two things behind the empty dashboard. D8 is the timezone bug that empties Flash Feb. D9 is the extra date filter that can hide rows that already belong to the wave by `waveId`.
+
+### D8: Wave window used local midnight (PULSE-106)
+
+**Symptom:** The dashboard said no feedback for a wave that had responses — Acme “Flash Feb 2026”.
+
+**How I found it:** Seed stores that wave as one UTC day with responses between 19:00 and 23:00 UTC. The comments table (and originally the summary) clipped to `waveWindow()`. I ran both window calculations under IST: local end-of-day cuts off at 18:29 UTC, so every Flash Feb row falls outside.
+
+**Root cause:** `startDate` / `endDate` are UTC calendar dates. `setHours` applies the machine timezone. In IST the window becomes `Feb 9 18:30Z → Feb 10 18:29Z`. Evening-UTC replies never match. Empty summary used to render “No feedback yet”; after D1 the score card reads by `waveId` only, but the table was still empty for the same reason.
+
+**Fix:** `setUTCHours(0, 0, 0, 0)` and `setUTCHours(23, 59, 59, 999)` so the window is the UTC day the seed and `@db.Date` describe.
+
+**How I verified it:** SQL: 0 rows inside the old IST window, 300 inside the UTC day (179 with comments). After the change, Flash Feb shows the score card and 179 comments.
+
+**Blast radius:** `waveWindow` is still used by unused `loadWaveFeedback`. Live reads are covered by D9 as well.
+
+### D9: Reads also filtered by respondedAt (PULSE-106)
+
+**Symptom:** Same family of bug — feedback exists on the wave, but the UI can still miss it. Clearest with webhook rows: stored against the right `waveId`, stamped `respondedAt: new Date()`, then filtered out because “today” is outside the wave’s calendar range.
+
+**How I found it:** While checking Flash Feb / webhook verification. Q1 2026 had more rows in the database than the dashboard showed; the gap was the events just sent.
+
+**Root cause:** Membership was defined twice. The foreign key `waveId` already says which wave a response belongs to. Clipping again on `respondedAt` can only remove rows that genuinely belong to the wave.
+
+**Fix:** Dropped the `respondedAt` window from `listFeedback` (search and non-search). `getSummary` already keyed off `waveId` after D1. I did not rewrite `respondedAt` on write — the received time is a fact about the delivery.
+
+**How I verified it:** Flash Feb still shows 179. Webhook events for Q1 show up in the dashboard total without waiting for a date inside Jan–Mar.
+
+**Blast radius:** Only the feedback list path. `loadWaveFeedback` still applies the (now UTC) window, but nothing calls it.
+
+
 
 
 
