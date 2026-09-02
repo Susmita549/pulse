@@ -78,5 +78,36 @@ I left one `getSummary` per brand. That looks expensive but it's one query per b
 
 **Blast radius:** Only `listWithStats`. The brand detail page does not use this method.
 
+PULSE-105 looked like one ticket. It was two defects sitting behind it. D6 is why the test script said it stored nothing. D7 is why a redelivery stored copies. Fixing either one alone would leave the other symptom.
+
+### D6: Webhook returned before the writes finished (PULSE-105)
+
+**Symptom:** `npm run send:responses` reported storing none of what it sent. The rows showed up if you looked again a moment later.
+
+**How I found it:** Read `POST /api/webhooks/mock-whatsapp` next to `scripts/send-responses.ts`, which counts rows as soon as the HTTP response comes back.
+
+**Root cause:** `events.forEach(async (event) => { await ResponseService.record(event); })` does not wait. `forEach` ignores the promises. The handler returned 200 while inserts were still in flight.
+
+**Fix:** `await Promise.all(events.map((event) => ResponseService.record(event)))` so the 200 means the batch has actually been written. Still return 2xx for unmatched payloads — that is on purpose (`docs/decisions.md`). A bad brand slug is not transient; 4xx would make the provider retry a dead payload for hours.
+
+**How I verified it:** After this, `send:responses` reports `stored 5 of 5` at +0ms for unique event ids.
+
+**Blast radius:** Only this route. Duplicate `eventId` under concurrent writes is D7, not this.
+
+### D7: Redelivered events stored more than once (PULSE-105)
+
+**Symptom:** The provider redelivered a batch and we ended up with several copies of the same answer. `send:responses --duplicate` is the repro.
+
+**How I found it:** Read `ResponseService.record`. `eventId` is documented as a de-duplication key but had no unique constraint — only a `findFirst` before `create`.
+
+**Root cause:** Check-then-insert is racy. Two in-flight deliveries both see “not found” and both insert. The database had nothing to reject the second row. Postgres unique indexes treat `NULL` as distinct, so in-app rows with no `eventId` can still coexist.
+
+**Fix:** `eventId String? @unique`. Insert and catch Prisma `P2002` as a duplicate, same pattern as `addCustomer`. Webhook still returns 2xx. Needs `npx prisma db push` so the index exists.
+
+**How I verified it:** `send:responses --duplicate` stores 1 of 5 and one distinct event id. A normal run still stores all five distinct ids.
+
+**Blast radius:** Only webhook inserts. Seeded responses have null `eventId`. Dirty data with duplicate event ids would block `db push`; `db:reset` clears that.
+
+
 
 

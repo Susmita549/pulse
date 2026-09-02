@@ -38,9 +38,7 @@ export async function POST(request: Request) {
 
   const events = Array.isArray(parsed.data) ? parsed.data : [parsed.data];
 
-  events.forEach(async (event) => {
-    await ResponseService.record(event);
-  });
+  await Promise.all(events.map((event) => ResponseService.record(event)));
 
   return NextResponse.json({ ok: true, received: events.length });
 }

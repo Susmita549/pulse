@@ -53,7 +53,7 @@ model Response {
   score       Int
   verbatim    String?
   /// Provider-supplied de-duplication key. Null for responses captured in-app.
-  eventId     String?
+  eventId     String?  @unique
   respondedAt DateTime @default(now())
   createdAt   DateTime @default(now())
 
